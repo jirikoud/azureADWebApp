@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.6.33815.320
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AzureWebApp", "AzureWebApp\AzureWebApp.csproj", "{16132E05-C6FC-4289-8603-08332023C982}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{16132E05-C6FC-4289-8603-08332023C982}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{16132E05-C6FC-4289-8603-08332023C982}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{16132E05-C6FC-4289-8603-08332023C982}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{16132E05-C6FC-4289-8603-08332023C982}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {43DD4BD9-EDF0-446C-85F9-7409424F1035}
+	EndGlobalSection
+EndGlobal
