@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 
 namespace AzureWebApp
 {
@@ -22,12 +24,16 @@ namespace AzureWebApp
 
             // Add Authentication services
 
+            JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear();
             builder.Services.AddAuthentication(options =>
             {
                 options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
                 options.DefaultChallengeScheme = "oidc";
             })
-            .AddCookie(setup => setup.ExpireTimeSpan = TimeSpan.FromMinutes(sessionCookieLifetime))
+            .AddCookie(CookieAuthenticationDefaults.AuthenticationScheme, setup =>
+            {
+                setup.ExpireTimeSpan = TimeSpan.FromMinutes(sessionCookieLifetime);
+            })
             .AddOpenIdConnect("oidc", options =>
             {
                 options.SignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
@@ -41,10 +47,34 @@ namespace AzureWebApp
                 options.RequireHttpsMetadata = false;
                 options.Scope.Add("openid");
                 options.Scope.Add("profile");
+                options.Scope.Add("offline_access");
                 if (clientId != null)
                 {
                     options.Scope.Add(clientId);
                 }
+                options.Events.OnTokenValidated = context =>
+                {
+                    if (context.TokenEndpointResponse != null)
+                    {
+                        var identity = (ClaimsIdentity)context.Principal.Identity;
+                        identity.AddClaim(new Claim("access_token", context.TokenEndpointResponse.AccessToken));
+                        identity.AddClaim(new Claim("refresh_token", context.TokenEndpointResponse.RefreshToken));
+
+                        // so that we don't issue a session cookie but one with a fixed expiration
+                        context.Properties.IsPersistent = true;
+
+                        // align expiration of the cookie with expiration of the
+                        // access token ? refresh token
+                        var token = new JwtSecurityToken(context.TokenEndpointResponse.AccessToken);
+                        context.Properties.ExpiresUtc = token.ValidTo;
+                    }
+                    return Task.CompletedTask;
+                };
+                options.Events.OnTokenResponseReceived = context =>
+                {
+                    var message = context.ProtocolMessage;
+                    return Task.FromResult(0);
+                };
             });
 
             // Build the app
