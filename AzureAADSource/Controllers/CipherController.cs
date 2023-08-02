@@ -1,6 +1,9 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using Microsoft.AspNetCore.DataProtection.KeyManagement;
+using Microsoft.AspNetCore.DataProtection.KeyManagement.Internal;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using System.Buffers.Text;
+using System.IO;
 using System.Security.Cryptography;
 
 namespace AzureAADSource.Controllers
@@ -19,15 +22,23 @@ namespace AzureAADSource.Controllers
                 //CngKey bobPrivateKey = CngKey.Import(Convert.FromBase64String(bobPrivate), CngKeyBlobFormat.GenericPrivateBlob);
                 //ECDiffieHellmanCng crypto = new ECDiffieHellmanCng(bobPrivateKey);
 
-                ECDiffieHellmanCng cryptoAlice = new ECDiffieHellmanCng(ECCurve.CreateFromFriendlyName("secp256r1"));
+                ECDiffieHellman cryptoAlice = new ECDiffieHellmanCng(ECCurve.CreateFromFriendlyName("secp256r1"));
                 cryptoAlice.ImportFromPem(privateAlice);
                 var privateAliceKey = cryptoAlice.ExportECPrivateKeyPem();
-                var publicAliceKey = cryptoAlice.PublicKey.ToString();
+                var publicAliceKey = cryptoAlice.PublicKey;
 
-                ECDiffieHellmanCng cryptoBob = new ECDiffieHellmanCng(ECCurve.CreateFromFriendlyName("secp256r1"));
+                ECDiffieHellman cryptoBob = new ECDiffieHellmanCng(ECCurve.CreateFromFriendlyName("secp256r1"));
                 cryptoBob.ImportFromPem(privateBob);
                 var privateBobKey = cryptoBob.ExportECPrivateKeyPem();
-                var publicBobKey = cryptoBob.PublicKey.ToString();
+                var publicBobKey = cryptoBob.PublicKey;
+
+                var inKey = cryptoAlice.DeriveKeyMaterial(publicBobKey);
+                var inKeyText = Convert.ToHexString(inKey);
+
+                //var memoryStream = new MemoryStream();
+                //memoryStream.Write(Convert.FromBase64String("XlsY5scsUiUeaCMgdDfUdTffiaGfkJboCyvZoImJ8blrH+ufwNvIkaAYQkvc"));
+                var derivedKey = HKDF.DeriveKey(HashAlgorithmName.SHA256, inKey, 32, new byte[0], new byte[0]);
+                //CryptoStream cryptStream = new CryptoStream(memoryStream, aes.CreateDecryptor(key, iv), CryptoStreamMode.Read);
 
 
                 //using (FileStream fileStream = new("TestData.txt", FileMode.OpenOrCreate))
