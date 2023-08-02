@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using System.Buffers.Text;
 using System.Security.Cryptography;
 
 namespace AzureAADSource.Controllers
@@ -12,35 +13,52 @@ namespace AzureAADSource.Controllers
         {
             try
             {
-                using (FileStream fileStream = new("TestData.txt", FileMode.OpenOrCreate))
-                {
-                    using (Aes aes = Aes.Create())
-                    {
-                        byte[] key =
-                        {
-                            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-                            0x09, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16
-                        };
-                        aes.Key = key;
+                string privateAlice = "-----BEGIN PRIVATE KEY-----\r\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg5f/l0osQj9mV3kZU\r\npEKMK/iY5JplkHOAhvj7jzCyv/ShRANCAARswQJRb2eaJMKqi4BE9AZevwC7L1HU\r\nkMgrKssi3EixRifLwxWm+MtXUBKjIsd9E8YSZMhuDROr2v46P1dPk6rX\r\n-----END PRIVATE KEY-----";
+                string privateBob = "-----BEGIN PRIVATE KEY-----\r\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQggja4Ej9TkxtlcFTA\r\nddILSDDbx6FQTD5fd5jd9sg31guhRANCAAQoX+YTzy3AGr9cctHjQZ9MaSz2kk2f\r\nCd3mKMJ1N0BLvx4LLrw3r/GFlVXVQS4v78Lt+iyXQ3mUsm9znmhoEdly\r\n-----END PRIVATE KEY-----";
 
-                        byte[] iv = aes.IV;
-                        fileStream.Write(iv, 0, iv.Length);
+                //CngKey bobPrivateKey = CngKey.Import(Convert.FromBase64String(bobPrivate), CngKeyBlobFormat.GenericPrivateBlob);
+                //ECDiffieHellmanCng crypto = new ECDiffieHellmanCng(bobPrivateKey);
 
-                        using (CryptoStream cryptoStream = new(
-                            fileStream,
-                            aes.CreateEncryptor(),
-                            CryptoStreamMode.Write))
-                        {
-                            // By default, the StreamWriter uses UTF-8 encoding.
-                            // To change the text encoding, pass the desired encoding as the second parameter.
-                            // For example, new StreamWriter(cryptoStream, Encoding.Unicode).
-                            using (StreamWriter encryptWriter = new(cryptoStream))
-                            {
-                                encryptWriter.WriteLine("Hello World!");
-                            }
-                        }
-                    }
-                }
+                ECDiffieHellmanCng cryptoAlice = new ECDiffieHellmanCng(ECCurve.CreateFromFriendlyName("secp256r1"));
+                cryptoAlice.ImportFromPem(privateAlice);
+                var privateAliceKey = cryptoAlice.ExportECPrivateKeyPem();
+                var publicAliceKey = cryptoAlice.PublicKey.ToString();
+
+                ECDiffieHellmanCng cryptoBob = new ECDiffieHellmanCng(ECCurve.CreateFromFriendlyName("secp256r1"));
+                cryptoBob.ImportFromPem(privateBob);
+                var privateBobKey = cryptoBob.ExportECPrivateKeyPem();
+                var publicBobKey = cryptoBob.PublicKey.ToString();
+
+
+                //using (FileStream fileStream = new("TestData.txt", FileMode.OpenOrCreate))
+                //{
+                //    using (Aes aes = Aes.Create())
+                //    {
+                //        byte[] key =
+                //        {
+                //            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+                //            0x09, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16
+                //        };
+                //        aes.Key = key;
+
+                //        byte[] iv = aes.IV;
+                //        fileStream.Write(iv, 0, iv.Length);
+
+                //        using (CryptoStream cryptoStream = new(
+                //            fileStream,
+                //            aes.CreateEncryptor(),
+                //            CryptoStreamMode.Write))
+                //        {
+                //            // By default, the StreamWriter uses UTF-8 encoding.
+                //            // To change the text encoding, pass the desired encoding as the second parameter.
+                //            // For example, new StreamWriter(cryptoStream, Encoding.Unicode).
+                //            using (StreamWriter encryptWriter = new(cryptoStream))
+                //            {
+                //                encryptWriter.WriteLine("Hello World!");
+                //            }
+                //        }
+                //    }
+                //}
 
                 Console.WriteLine("The file was encrypted.");
             }
