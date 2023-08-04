@@ -2,11 +2,20 @@
 using Microsoft.AspNetCore.DataProtection.KeyManagement.Internal;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Org.BouncyCastle.Asn1.X9;
+using Org.BouncyCastle.Crypto.Generators;
+using Org.BouncyCastle.Crypto;
+using Org.BouncyCastle.Crypto.Parameters;
 using System.Buffers.Text;
 using System.IO;
 using System.Security.Cryptography;
-using System.Text.Unicode;
-using static System.Runtime.InteropServices.JavaScript.JSType;
+using Org.BouncyCastle.Security;
+using Org.BouncyCastle.OpenSsl;
+using Org.BouncyCastle.Crypto.Agreement;
+using Org.BouncyCastle.Math;
+using Org.BouncyCastle.Crypto.Engines;
+using Org.BouncyCastle.Crypto.Modes;
+using System;
 
 namespace AzureAADSource.Controllers
 {
@@ -14,84 +23,129 @@ namespace AzureAADSource.Controllers
     [ApiController]
     public class CipherController : ControllerBase
     {
+        private int _nonceSize = 96;
+        private int _macSize = 128;
+        private SecureRandom _random = new SecureRandom();
+
+        private byte[] EncryptWithKey(byte[] messageToEncrypt, byte[] key)
+        {
+            //Using random nonce large enough not to repeat
+            var nonce = new byte[_nonceSize / 8];
+            _random.NextBytes(nonce, 0, nonce.Length);
+
+            var cipher = new GcmBlockCipher(new AesEngine());
+            var parameters = new AeadParameters(new KeyParameter(key), _macSize, nonce, null);
+            cipher.Init(true, parameters);
+
+            //Generate Cipher Text With Auth Tag
+            var cipherText = new byte[cipher.GetOutputSize(messageToEncrypt.Length)];
+            var len = cipher.ProcessBytes(messageToEncrypt, 0, messageToEncrypt.Length, cipherText, 0);
+            cipher.DoFinal(cipherText, len);
+
+            //Assemble Message
+            using (var combinedStream = new MemoryStream())
+            {
+                using (var binaryWriter = new BinaryWriter(combinedStream))
+                {
+                    //Prepend Nonce
+                    binaryWriter.Write(nonce);
+                    //Write Cipher Text
+                    binaryWriter.Write(cipherText);
+                }
+                return combinedStream.ToArray();
+            }
+        }
+
+
+        private byte[] DecryptWithKey(byte[] encryptedMessage, byte[] key)
+        {
+            using (var cipherStream = new MemoryStream(encryptedMessage))
+            {
+                using (var cipherReader = new BinaryReader(cipherStream))
+                {
+                    //Grab Nonce
+                    var nonce = cipherReader.ReadBytes(_nonceSize / 8);
+
+                    var cipher = new GcmBlockCipher(new AesEngine());
+                    var parameters = new AeadParameters(new KeyParameter(key), _macSize, nonce);
+                    cipher.Init(false, parameters);
+
+                    //Decrypt Cipher Text
+                    var cipherText = cipherReader.ReadBytes(encryptedMessage.Length - nonce.Length);
+                    var plainText = new byte[cipher.GetOutputSize(cipherText.Length)];
+
+                    var len = cipher.ProcessBytes(cipherText, 0, cipherText.Length, plainText, 0);
+                    cipher.DoFinal(plainText, len);
+
+                    return plainText;
+                }
+            }
+        }
+
         public IActionResult Get()
         {
             try
             {
-                string privateAlice = "-----BEGIN PRIVATE KEY-----MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg5f/l0osQj9mV3kZUpEKMK/iY5JplkHOAhvj7jzCyv/ShRANCAARswQJRb2eaJMKqi4BE9AZevwC7L1HUkMgrKssi3EixRifLwxWm+MtXUBKjIsd9E8YSZMhuDROr2v46P1dPk6rX-----END PRIVATE KEY-----";
-                string privateBob = "-----BEGIN PRIVATE KEY-----\r\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQggja4Ej9TkxtlcFTA\r\nddILSDDbx6FQTD5fd5jd9sg31guhRANCAAQoX+YTzy3AGr9cctHjQZ9MaSz2kk2f\r\nCd3mKMJ1N0BLvx4LLrw3r/GFlVXVQS4v78Lt+iyXQ3mUsm9znmhoEdly\r\n-----END PRIVATE KEY-----";
-                string cipheredText = "Srr23zad688FBpbTMbyjxKQ=";
-                string nonceText = "0zHvUkrFAGqlfp2K";
-                string tagText = "+ZSghUV/tbyJGVPXZ14TTg==";
+                string privateAlice = "-----BEGIN EC PRIVATE KEY-----\r\nMHcCAQEEINjJKI/Y+anyZu9SD55wkfxO1wTWu5lhJsV9r4m67yW4oAoGCCqGSM49\r\nAwEHoUQDQgAEJNXEFVDaFoF3cx7YnfmNQhrkhoEzyaZpLhv+ri8bFXE8EL67FcOY\r\nz94MHNHDv1XcW1sbWvCCxW74BpWcZayyIw==\r\n-----END EC PRIVATE KEY-----";
+                string publicBob = "-----BEGIN PUBLIC KEY-----\r\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEbMECUW9nmiTCqouARPQGXr8Auy9R\r\n1JDIKyrLItxIsUYny8MVpvjLV1ASoyLHfRPGEmTIbg0Tq9r+Oj9XT5Oq1w==\r\n-----END PUBLIC KEY-----";
+                string cipheredText = "XP0kOOq82qZc7NDSUklEp9Nwivux9KEvpUVF+lgCv02geii6lt5vsf2T29AF";
+                string inKeyTest = "97PPgKfhkMAGPDP1mXQSFGWAvlLcqgq0EHerGem6LvA=";
+                string derivedKeyTest = "OP5dPKzscBrv3XodGGbjsyUsOeNjaAgtnadgr7Eb82U=";
+                string message = "Zkouška sirén";
 
-                //CngKey bobPrivateKey = CngKey.Import(Convert.FromBase64String(bobPrivate), CngKeyBlobFormat.GenericPrivateBlob);
-                //ECDiffieHellmanCng crypto = new ECDiffieHellmanCng(bobPrivateKey);
+                X9ECParameters ecParams = ECNamedCurveTable.GetByName("secp256r1");
+                var ecDomainParams = new ECDomainParameters(
+                ecParams.Curve, ecParams.G, ecParams.N, ecParams.H, ecParams.GetSeed());
 
-                ECDiffieHellman cryptoAlice = new ECDiffieHellmanCng(ECCurve.CreateFromFriendlyName("secp256r1"));
-                var privateAliceKeyZero = cryptoAlice.ExportECPrivateKeyPem();
-                cryptoAlice.ImportFromPem(privateAlice);
-                var privateAliceKey = cryptoAlice.ExportECPrivateKeyPem();
-                var publicAliceKey = cryptoAlice.PublicKey;
+                ECKeyGenerationParameters ecKeyGenParams = new ECKeyGenerationParameters(ecDomainParams, _random);
+                ECKeyPairGenerator ecKeyPairGen = new ECKeyPairGenerator();
+                ecKeyPairGen.Init(ecKeyGenParams);
+                AsymmetricCipherKeyPair ecKeyPair = ecKeyPairGen.GenerateKeyPair();
 
-                ECDiffieHellman cryptoBob = new ECDiffieHellmanCng(ECCurve.CreateFromFriendlyName("secp256r1"));
-                cryptoBob.ImportFromPem(privateBob);
-                var privateBobKey = cryptoBob.ExportECPrivateKeyPem();
-                var publicBobKey = cryptoBob.PublicKey;
+                TextWriter textWriter = new StringWriter();
+                var pemWriter = new PemWriter(textWriter);
+                pemWriter.WriteObject(ecKeyPair.Public);
+                pemWriter.Writer.Flush();
+                string? privateKey = textWriter.ToString();
 
-                var inKey = cryptoAlice.DeriveKeyMaterial(publicBobKey);
-                var inKeyText = Convert.ToHexString(inKey);
+                PemReader pemReaderAlice = new PemReader(new StringReader(privateAlice));
+                AsymmetricCipherKeyPair keyPairAlice = (AsymmetricCipherKeyPair)pemReaderAlice.ReadObject();
+                ECPrivateKeyParameters privateKeyParamsAlice = (ECPrivateKeyParameters)keyPairAlice.Private;
 
-                //var memoryStream = new MemoryStream();
-                //memoryStream.Write(Convert.FromBase64String("XlsY5scsUiUeaCMgdDfUdTffiaGfkJboCyvZoImJ8blrH+ufwNvIkaAYQkvc"));
+                PemReader pemReaderBob = new PemReader(new StringReader(publicBob));
+                ECPublicKeyParameters publicKeyParamsBob = (ECPublicKeyParameters)pemReaderBob.ReadObject();
+
+                ECDHCBasicAgreement keyAgreement = new ECDHCBasicAgreement();
+                keyAgreement.Init(privateKeyParamsAlice);
+                BigInteger secret = keyAgreement.CalculateAgreement(publicKeyParamsBob);
+                var inKey = secret.ToByteArrayUnsigned();
+
                 var derivedKey = HKDF.DeriveKey(HashAlgorithmName.SHA256, inKey, 32, null, null);
-                //CryptoStream cryptStream = new CryptoStream(memoryStream, aes.CreateDecryptor(key, iv), CryptoStreamMode.Read);
+                var derivedKeyText = Convert.ToBase64String(derivedKey);
 
-                derivedKey = Convert.FromBase64String("15zJkw8Dyr1w4iQZw92miip3CQBWlVkpiJUsZacdexs=");
 
-                var data = Convert.FromBase64String(cipheredText);
-                byte[] decryptedData = new byte[data.Length];
-                byte[] nonce = Convert.FromBase64String(nonceText);
-                byte[] tag = Convert.FromBase64String(tagText);
+                //derivedKey = Convert.FromBase64String("15zJkw8Dyr1w4iQZw92miip3CQBWlVkpiJUsZacdexs=");
 
-                var crypto = new AesGcm(derivedKey);
-                crypto.Decrypt(nonce, data, tag, decryptedData, null);
+                var encryptedData = Convert.FromBase64String(cipheredText);
+
+                //var encryptedData = EncryptWithKey(System.Text.Encoding.UTF8.GetBytes(message), derivedKey);
+                var encryptedText = Convert.ToBase64String(encryptedData);
+
+
+                var decryptedData = DecryptWithKey(encryptedData, derivedKey);
+
+
+                //byte[] decryptedData = new byte[data.Length];
+                //byte[] nonce = Convert.FromBase64String(nonceText);
+                //byte[] tag = Convert.FromBase64String(tagText);
+
+                //var crypto = new AesGcm(derivedKey);
+                //crypto.Decrypt(nonce, data, tag, decryptedData, null);
 
                 var decryptedText = System.Text.Encoding.UTF8.GetString(decryptedData);
 
-
-
-
-                //using (FileStream fileStream = new("TestData.txt", FileMode.OpenOrCreate))
-                //{
-                //    using (Aes aes = Aes.Create())
-                //    {
-                //        byte[] key =
-                //        {
-                //            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-                //            0x09, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16
-                //        };
-                //        aes.Key = key;
-
-                //        byte[] iv = aes.IV;
-                //        fileStream.Write(iv, 0, iv.Length);
-
-                //        using (CryptoStream cryptoStream = new(
-                //            fileStream,
-                //            aes.CreateEncryptor(),
-                //            CryptoStreamMode.Write))
-                //        {
-                //            // By default, the StreamWriter uses UTF-8 encoding.
-                //            // To change the text encoding, pass the desired encoding as the second parameter.
-                //            // For example, new StreamWriter(cryptoStream, Encoding.Unicode).
-                //            using (StreamWriter encryptWriter = new(cryptoStream))
-                //            {
-                //                encryptWriter.WriteLine("Hello World!");
-                //            }
-                //        }
-                //    }
-                //}
-
                 Console.WriteLine("The file was encrypted.");
+                return Ok(decryptedText);
             }
             catch (Exception ex)
             {
