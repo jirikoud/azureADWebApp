@@ -1,21 +1,18 @@
-﻿using Microsoft.AspNetCore.DataProtection.KeyManagement;
-using Microsoft.AspNetCore.DataProtection.KeyManagement.Internal;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using Org.BouncyCastle.Asn1.X9;
 using Org.BouncyCastle.Crypto.Generators;
 using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Crypto.Parameters;
-using System.Buffers.Text;
-using System.IO;
-using System.Security.Cryptography;
+//using System.Security.Cryptography;
 using Org.BouncyCastle.Security;
 using Org.BouncyCastle.OpenSsl;
 using Org.BouncyCastle.Crypto.Agreement;
 using Org.BouncyCastle.Math;
 using Org.BouncyCastle.Crypto.Engines;
 using Org.BouncyCastle.Crypto.Modes;
-using System;
+using AzureAADSource.Models;
+using System.Text.Json;
+using System.Diagnostics;
 
 namespace AzureAADSource.Controllers
 {
@@ -56,7 +53,6 @@ namespace AzureAADSource.Controllers
             }
         }
 
-
         private byte[] DecryptWithKey(byte[] encryptedMessage, byte[] key)
         {
             using (var cipherStream = new MemoryStream(encryptedMessage))
@@ -80,6 +76,81 @@ namespace AzureAADSource.Controllers
                     return plainText;
                 }
             }
+        }
+
+        private byte[] EncryptWithChaChaPoly(byte[] messageToEncrypt, byte[] key)
+        {
+            if (key.Length != 32) throw new ArgumentException("Key must be 32 bytes", nameof(key));
+
+            //Using random nonce large enough not to repeat
+            var nonce = new byte[_nonceSize / 8];
+            _random.NextBytes(nonce, 0, nonce.Length);
+
+            var keyMaterial = new KeyParameter(key);
+            var parameters = new ParametersWithIV(keyMaterial, nonce);
+            var cipher = new ChaCha20Poly1305();
+            cipher.Init(true, parameters);
+
+            //Generate Cipher Text With Auth Tag
+            var cipherText = new byte[cipher.GetOutputSize(messageToEncrypt.Length)];
+
+            var len = cipher.ProcessBytes(messageToEncrypt, 0, messageToEncrypt.Length, cipherText, 0);
+            cipher.DoFinal(cipherText, len);
+
+            //Assemble Message
+            using (var combinedStream = new MemoryStream())
+            {
+                using (var binaryWriter = new BinaryWriter(combinedStream))
+                {
+                    //Prepend Nonce
+                    binaryWriter.Write(nonce);
+                    //Write Cipher Text
+                    binaryWriter.Write(cipherText);
+                }
+                return combinedStream.ToArray();
+            }
+        }
+
+        private byte[] DecryptWithChaChaPoly(byte[] encryptedMessage, byte[] key)
+        {
+            using (var cipherStream = new MemoryStream(encryptedMessage))
+            {
+                using (var cipherReader = new BinaryReader(cipherStream))
+                {
+                    //Grab Nonce
+                    var nonce = cipherReader.ReadBytes(_nonceSize / 8);
+
+                    var keyMaterial = new KeyParameter(key);
+                    var parameters = new ParametersWithIV(keyMaterial, nonce);
+                    var cipher = new ChaCha20Poly1305();
+                    cipher.Init(false, parameters);
+
+                    //Decrypt Cipher Text
+                    var cipherText = cipherReader.ReadBytes(encryptedMessage.Length - nonce.Length);
+                    var plainText = new byte[cipher.GetOutputSize(cipherText.Length)];
+
+                    var len = cipher.ProcessBytes(cipherText, 0, cipherText.Length, plainText, 0);
+                    cipher.DoFinal(plainText, len);
+
+                    return plainText;
+                }
+            }
+        }
+
+        private string GenerateLargeMessage()
+        {
+            var model = new JsonModel()
+            {
+                Title = "Secret message",
+                SubTitle = "Secret subtitle",
+                Items = new List<string>(),
+            };
+            for (int i = 0; i < 500000; i++)
+            {
+                model.Items.Add($"Item{_random.NextLong}");
+            }
+            string jsonString = JsonSerializer.Serialize(model);
+            return jsonString;
         }
 
         public IActionResult Get()
@@ -120,20 +191,29 @@ namespace AzureAADSource.Controllers
                 BigInteger secret = keyAgreement.CalculateAgreement(publicKeyParamsBob);
                 var inKey = secret.ToByteArrayUnsigned();
 
-                var derivedKey = HKDF.DeriveKey(HashAlgorithmName.SHA256, inKey, 32, null, null);
+                var derivedKey = System.Security.Cryptography.HKDF.DeriveKey(System.Security.Cryptography.HashAlgorithmName.SHA256, inKey, 32, null, null);
                 var derivedKeyText = Convert.ToBase64String(derivedKey);
 
-
+                message = GenerateLargeMessage();
                 //derivedKey = Convert.FromBase64String("15zJkw8Dyr1w4iQZw92miip3CQBWlVkpiJUsZacdexs=");
 
-                var encryptedData = Convert.FromBase64String(cipheredText);
+                //var encryptedData = Convert.FromBase64String(cipheredText);
 
-                //var encryptedData = EncryptWithKey(System.Text.Encoding.UTF8.GetBytes(message), derivedKey);
-                var encryptedText = Convert.ToBase64String(encryptedData);
+                Stopwatch stopwatch = Stopwatch.StartNew();
+                var encryptedData = EncryptWithChaChaPoly(System.Text.Encoding.UTF8.GetBytes(message), derivedKey);
+                //var encryptedText = Convert.ToBase64String(encryptedData);
 
+                var decryptedData = DecryptWithChaChaPoly(encryptedData, derivedKey);
+                stopwatch.Stop();
+                var elapsedChaCha = stopwatch.ElapsedMilliseconds;
 
-                var decryptedData = DecryptWithKey(encryptedData, derivedKey);
+                stopwatch = Stopwatch.StartNew();
+                encryptedData = EncryptWithKey(System.Text.Encoding.UTF8.GetBytes(message), derivedKey);
+                //var encryptedText = Convert.ToBase64String(encryptedData);
 
+                decryptedData = DecryptWithKey(encryptedData, derivedKey);
+                stopwatch.Stop();
+                var elapsedAes = stopwatch.ElapsedMilliseconds;
 
                 //byte[] decryptedData = new byte[data.Length];
                 //byte[] nonce = Convert.FromBase64String(nonceText);
@@ -142,10 +222,11 @@ namespace AzureAADSource.Controllers
                 //var crypto = new AesGcm(derivedKey);
                 //crypto.Decrypt(nonce, data, tag, decryptedData, null);
 
-                var decryptedText = System.Text.Encoding.UTF8.GetString(decryptedData);
+                //var decryptedText = System.Text.Encoding.UTF8.GetString(decryptedData);
 
                 Console.WriteLine("The file was encrypted.");
-                return Ok(decryptedText);
+                var responseText = $"Test success, message length = {message.Length} Bytes, times: ChaChaPoly={elapsedChaCha}ms, Aes={elapsedAes}ms";
+                return Ok(responseText);
             }
             catch (Exception ex)
             {
