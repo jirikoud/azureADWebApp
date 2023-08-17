@@ -13,6 +13,11 @@ using Org.BouncyCastle.Crypto.Modes;
 using AzureAADSource.Models;
 using System.Text.Json;
 using System.Diagnostics;
+using Org.BouncyCastle.Crypto.Digests;
+using Org.BouncyCastle.Crypto.Macs;
+using Microsoft.AspNetCore.DataProtection.KeyManagement;
+using static System.Net.Mime.MediaTypeNames;
+using System.Text;
 
 namespace AzureAADSource.Controllers
 {
@@ -191,7 +196,11 @@ namespace AzureAADSource.Controllers
                 BigInteger secret = keyAgreement.CalculateAgreement(publicKeyParamsBob);
                 var inKey = secret.ToByteArrayUnsigned();
 
-                var derivedKey = System.Security.Cryptography.HKDF.DeriveKey(System.Security.Cryptography.HashAlgorithmName.SHA256, inKey, 32, null, null);
+                HkdfParameters parameters = new HkdfParameters(inKey, null, null);
+                HkdfBytesGenerator hkdf = new HkdfBytesGenerator(new Sha256Digest());
+                hkdf.Init(parameters);
+                byte[] derivedKey = new byte[32];
+                hkdf.GenerateBytes(derivedKey, 0, 32);
                 var derivedKeyText = Convert.ToBase64String(derivedKey);
 
                 message = GenerateLargeMessage();
@@ -200,18 +209,18 @@ namespace AzureAADSource.Controllers
                 //var encryptedData = Convert.FromBase64String(cipheredText);
 
                 Stopwatch stopwatch = Stopwatch.StartNew();
-                var encryptedData = EncryptWithChaChaPoly(System.Text.Encoding.UTF8.GetBytes(message), derivedKey);
+                var encryptedData = EncryptWithChaChaPoly(Encoding.UTF8.GetBytes(message), derivedKey);
                 //var encryptedText = Convert.ToBase64String(encryptedData);
 
-                var decryptedData = DecryptWithChaChaPoly(encryptedData, derivedKey);
+                //var decryptedData = DecryptWithChaChaPoly(encryptedData, derivedKey);
                 stopwatch.Stop();
                 var elapsedChaCha = stopwatch.ElapsedMilliseconds;
 
                 stopwatch = Stopwatch.StartNew();
-                encryptedData = EncryptWithKey(System.Text.Encoding.UTF8.GetBytes(message), derivedKey);
+                encryptedData = EncryptWithKey(Encoding.UTF8.GetBytes(message), derivedKey);
                 //var encryptedText = Convert.ToBase64String(encryptedData);
 
-                decryptedData = DecryptWithKey(encryptedData, derivedKey);
+                //decryptedData = DecryptWithKey(encryptedData, derivedKey);
                 stopwatch.Stop();
                 var elapsedAes = stopwatch.ElapsedMilliseconds;
 
