@@ -3,7 +3,6 @@ using Org.BouncyCastle.Asn1.X9;
 using Org.BouncyCastle.Crypto.Generators;
 using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Crypto.Parameters;
-//using System.Security.Cryptography;
 using Org.BouncyCastle.Security;
 using Org.BouncyCastle.OpenSsl;
 using Org.BouncyCastle.Crypto.Agreement;
@@ -14,9 +13,6 @@ using AzureAADSource.Models;
 using System.Text.Json;
 using System.Diagnostics;
 using Org.BouncyCastle.Crypto.Digests;
-using Org.BouncyCastle.Crypto.Macs;
-using Microsoft.AspNetCore.DataProtection.KeyManagement;
-using static System.Net.Mime.MediaTypeNames;
 using System.Text;
 
 namespace AzureAADSource.Controllers
@@ -27,9 +23,11 @@ namespace AzureAADSource.Controllers
     {
         private int _nonceSize = 96;
         private int _macSize = 128;
+        private int _tagSize = 128;
+        private int _repeatCount = 100;
         private SecureRandom _random = new SecureRandom();
 
-        private byte[] EncryptWithKey(byte[] messageToEncrypt, byte[] key)
+        private byte[] EncryptWithAes(byte[] messageToEncrypt, byte[] key)
         {
             //Using random nonce large enough not to repeat
             var nonce = new byte[_nonceSize / 8];
@@ -58,7 +56,7 @@ namespace AzureAADSource.Controllers
             }
         }
 
-        private byte[] DecryptWithKey(byte[] encryptedMessage, byte[] key)
+        private byte[] DecryptWithAes(byte[] encryptedMessage, byte[] key)
         {
             using (var cipherStream = new MemoryStream(encryptedMessage))
             {
@@ -77,6 +75,59 @@ namespace AzureAADSource.Controllers
 
                     var len = cipher.ProcessBytes(cipherText, 0, cipherText.Length, plainText, 0);
                     cipher.DoFinal(plainText, len);
+
+                    return plainText;
+                }
+            }
+        }
+
+        private byte[] EncryptWithSystemAes(byte[] messageToEncrypt, byte[] key)
+        {
+            //Using random nonce large enough not to repeat
+            var nonce = new byte[_nonceSize / 8];
+            _random.NextBytes(nonce, 0, nonce.Length);
+
+            byte[] cipherText = new byte[messageToEncrypt.Length];
+            byte[] tag = new byte[_tagSize / 8];
+
+            var crypto = new System.Security.Cryptography.AesGcm(key);
+            crypto.Encrypt(nonce, messageToEncrypt, cipherText, tag, null);
+
+            //Assemble Message
+            using (var combinedStream = new MemoryStream())
+            {
+                using (var binaryWriter = new BinaryWriter(combinedStream))
+                {
+                    //Prepend Nonce
+                    binaryWriter.Write(nonce);
+                    //Append Tag
+                    binaryWriter.Write(tag);
+                    //Write Cipher Text
+                    binaryWriter.Write(cipherText);
+                }
+                return combinedStream.ToArray();
+            }
+        }
+
+        private byte[] DecryptWithSystemAes(byte[] encryptedMessage, byte[] key)
+        {
+            using (var cipherStream = new MemoryStream(encryptedMessage))
+            {
+                using (var cipherReader = new BinaryReader(cipherStream))
+                {
+                    //Grab Nonce
+                    var nonce = cipherReader.ReadBytes(_nonceSize / 8);
+ 
+                    //Grab tag
+                    var tag = cipherReader.ReadBytes(_tagSize / 8);
+
+                    //Decrypt Cipher Text
+                    var cipherText = cipherReader.ReadBytes(encryptedMessage.Length - nonce.Length - tag.Length);
+                    var plainText = new byte[cipherText.Length];
+
+                    var crypto = new System.Security.Cryptography.AesGcm(key);
+
+                    crypto.Decrypt(nonce, cipherText, tag, plainText, null);
 
                     return plainText;
                 }
@@ -142,6 +193,65 @@ namespace AzureAADSource.Controllers
             }
         }
 
+        /// <summary>
+        /// Nepoužívat, ChaCha20Poly1305 hlásí, že je algorytmus nedostupný na platformě
+        /// </summary>
+        private byte[] EncryptWithSystemChaCha(byte[] messageToEncrypt, byte[] key)
+        {
+            //Using random nonce large enough not to repeat
+            var nonce = new byte[_nonceSize / 8];
+            _random.NextBytes(nonce, 0, nonce.Length);
+
+            byte[] cipherText = new byte[messageToEncrypt.Length];
+            byte[] tag = new byte[_tagSize / 8];
+
+            var crypto = new System.Security.Cryptography.ChaCha20Poly1305(key);
+            crypto.Encrypt(nonce, messageToEncrypt, cipherText, tag, null);
+
+            //Assemble Message
+            using (var combinedStream = new MemoryStream())
+            {
+                using (var binaryWriter = new BinaryWriter(combinedStream))
+                {
+                    //Prepend Nonce
+                    binaryWriter.Write(nonce);
+                    //Append Tag
+                    binaryWriter.Write(tag);
+                    //Write Cipher Text
+                    binaryWriter.Write(cipherText);
+                }
+                return combinedStream.ToArray();
+            }
+        }
+
+        /// <summary>
+        /// Nepoužívat, ChaCha20Poly1305 hlásí, že je algorytmus nedostupný na platformě
+        /// </summary>
+        private byte[] DecryptWithSystemChaCha(byte[] encryptedMessage, byte[] key)
+        {
+            using (var cipherStream = new MemoryStream(encryptedMessage))
+            {
+                using (var cipherReader = new BinaryReader(cipherStream))
+                {
+                    //Grab Nonce
+                    var nonce = cipherReader.ReadBytes(_nonceSize / 8);
+
+                    //Grab tag
+                    var tag = cipherReader.ReadBytes(_tagSize / 8);
+
+                    //Decrypt Cipher Text
+                    var cipherText = cipherReader.ReadBytes(encryptedMessage.Length - nonce.Length - tag.Length);
+                    var plainText = new byte[cipherText.Length];
+
+                    var crypto = new System.Security.Cryptography.ChaCha20Poly1305(key);
+
+                    crypto.Decrypt(nonce, cipherText, tag, plainText, null);
+
+                    return plainText;
+                }
+            }
+        }
+
         private string GenerateLargeMessage()
         {
             var model = new JsonModel()
@@ -150,9 +260,9 @@ namespace AzureAADSource.Controllers
                 SubTitle = "Secret subtitle",
                 Items = new List<string>(),
             };
-            for (int i = 0; i < 500000; i++)
+            for (int i = 0; i < 800000; i++)
             {
-                model.Items.Add($"Item{_random.NextLong}");
+                model.Items.Add($"Item{_random.NextInt64()}");
             }
             string jsonString = JsonSerializer.Serialize(model);
             return jsonString;
@@ -209,39 +319,60 @@ namespace AzureAADSource.Controllers
                 //var encryptedData = Convert.FromBase64String(cipheredText);
 
                 Stopwatch stopwatch = Stopwatch.StartNew();
-                var encryptedData = EncryptWithChaChaPoly(Encoding.UTF8.GetBytes(message), derivedKey);
-                //var encryptedText = Convert.ToBase64String(encryptedData);
 
-                //var decryptedData = DecryptWithChaChaPoly(encryptedData, derivedKey);
+                for (int i = 0; i < _repeatCount; i++)
+                {
+                    var encryptedData = EncryptWithChaChaPoly(Encoding.UTF8.GetBytes(message), derivedKey);
+                    //var decryptedData = DecryptWithChaChaPoly(encryptedData, derivedKey);
+                }
+
                 stopwatch.Stop();
                 var elapsedChaCha = stopwatch.ElapsedMilliseconds;
 
                 stopwatch = Stopwatch.StartNew();
-                encryptedData = EncryptWithKey(Encoding.UTF8.GetBytes(message), derivedKey);
-                //var encryptedText = Convert.ToBase64String(encryptedData);
 
-                //decryptedData = DecryptWithKey(encryptedData, derivedKey);
+                for (int i = 0; i < _repeatCount; i++)
+                {
+                    var encryptedData = EncryptWithAes(Encoding.UTF8.GetBytes(message), derivedKey);
+                    //decryptedData = DecryptWithKey(encryptedData, derivedKey);
+                }
+
                 stopwatch.Stop();
                 var elapsedAes = stopwatch.ElapsedMilliseconds;
 
-                //byte[] decryptedData = new byte[data.Length];
-                //byte[] nonce = Convert.FromBase64String(nonceText);
-                //byte[] tag = Convert.FromBase64String(tagText);
+                stopwatch = Stopwatch.StartNew();
 
-                //var crypto = new AesGcm(derivedKey);
-                //crypto.Decrypt(nonce, data, tag, decryptedData, null);
+                for (int i = 0; i < _repeatCount; i++)
+                {
+                    var encryptedData = EncryptWithSystemAes(Encoding.UTF8.GetBytes(message), derivedKey);
+                    //var decryptedData = DecryptWithSystemAes(encryptedData, derivedKey);
+                    //var decryptedText = Encoding.UTF8.GetString(decryptedData);
+                }
 
-                //var decryptedText = System.Text.Encoding.UTF8.GetString(decryptedData);
+                stopwatch.Stop();
+                var elapsedSystemAes = stopwatch.ElapsedMilliseconds;
+
+                stopwatch = Stopwatch.StartNew();
+                for (int i = 0; i < _repeatCount; i++)
+                {
+                    var encryptedData = EncryptWithSystemChaCha(Encoding.UTF8.GetBytes(message), derivedKey);
+                    //var decryptedData = DecryptWithSystemChaCha(encryptedData, derivedKey);
+                    //var decryptedText = Encoding.UTF8.GetString(decryptedData);
+                }
+
+                stopwatch.Stop();
+                var elapsedSystemChaCha = stopwatch.ElapsedMilliseconds;
 
                 Console.WriteLine("The file was encrypted.");
-                var responseText = $"Test success, message length = {message.Length} Bytes, times: ChaChaPoly={elapsedChaCha}ms, Aes={elapsedAes}ms";
+                var responseText = $"Test success, message length = {message.Length} Bytes, times: ChaChaPoly={elapsedChaCha}ms, Aes={elapsedAes}ms, System Aes={elapsedSystemAes}ms, System ChaCha={elapsedSystemChaCha}ms";
                 return Ok(responseText);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"The encryption failed. {ex}");
+                var errorText = $"The encryption failed. {ex}";
+                Console.WriteLine(errorText);
+                return Ok(errorText);
             }
-            return Ok();
         }
     }
 }
