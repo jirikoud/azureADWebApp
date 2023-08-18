@@ -14,6 +14,13 @@ using System.Text.Json;
 using System.Diagnostics;
 using Org.BouncyCastle.Crypto.Digests;
 using System.Text;
+using Microsoft.Extensions.Configuration;
+using System.Reflection.PortableExecutable;
+using System.Threading;
+using System.Buffers;
+using Microsoft.Extensions.Logging.Abstractions;
+using Org.BouncyCastle.Utilities;
+using System.IO;
 
 namespace AzureAADSource.Controllers
 {
@@ -24,14 +31,42 @@ namespace AzureAADSource.Controllers
         private int _nonceSize = 96;
         private int _macSize = 128;
         private int _tagSize = 128;
-        private int _repeatCount = 100;
+        private int _messageItems = 800;
+        private int _repeatCount = 1;
+        private bool _useSystemChaCha;
         private SecureRandom _random = new SecureRandom();
 
-        private byte[] EncryptWithAes(byte[] messageToEncrypt, byte[] key)
+        public CipherController(IConfiguration configuration)
         {
-            //Using random nonce large enough not to repeat
-            var nonce = new byte[_nonceSize / 8];
-            _random.NextBytes(nonce, 0, nonce.Length);
+            _useSystemChaCha = configuration.GetValue<bool>("UseSystemChaChaPoly");
+        }
+
+        private string? GetPublicKeyPem(AsymmetricCipherKeyPair keyPair)
+        {
+            TextWriter textWriter = new StringWriter();
+            var pemWriter = new PemWriter(textWriter);
+            pemWriter.WriteObject(keyPair.Public);
+            pemWriter.Writer.Flush();
+            return textWriter.ToString();
+        }
+
+        private string? GetPrivateKeyPem(AsymmetricCipherKeyPair keyPair)
+        {
+            TextWriter textWriter = new StringWriter();
+            var pemWriter = new PemWriter(textWriter);
+            pemWriter.WriteObject(keyPair.Private);
+            pemWriter.Writer.Flush();
+            return textWriter.ToString();
+        }
+
+        private byte[] EncryptWithAes(byte[] messageToEncrypt, byte[] key, byte[]? nonce = null)
+        {
+            if (nonce == null)
+            {
+                //Using random nonce large enough not to repeat
+                nonce = new byte[_nonceSize / 8];
+                _random.NextBytes(nonce, 0, nonce.Length);
+            }
 
             var cipher = new GcmBlockCipher(new AesEngine());
             var parameters = new AeadParameters(new KeyParameter(key), _macSize, nonce, null);
@@ -81,11 +116,14 @@ namespace AzureAADSource.Controllers
             }
         }
 
-        private byte[] EncryptWithSystemAes(byte[] messageToEncrypt, byte[] key)
+        private byte[] EncryptWithSystemAes(byte[] messageToEncrypt, byte[] key, byte[]? nonce = null)
         {
-            //Using random nonce large enough not to repeat
-            var nonce = new byte[_nonceSize / 8];
-            _random.NextBytes(nonce, 0, nonce.Length);
+            if (nonce == null)
+            {
+                //Using random nonce large enough not to repeat
+                nonce = new byte[_nonceSize / 8];
+                _random.NextBytes(nonce, 0, nonce.Length);
+            }
 
             byte[] cipherText = new byte[messageToEncrypt.Length];
             byte[] tag = new byte[_tagSize / 8];
@@ -100,10 +138,10 @@ namespace AzureAADSource.Controllers
                 {
                     //Prepend Nonce
                     binaryWriter.Write(nonce);
-                    //Append Tag
-                    binaryWriter.Write(tag);
                     //Write Cipher Text
                     binaryWriter.Write(cipherText);
+                    //Append Tag
+                    binaryWriter.Write(tag);
                 }
                 return combinedStream.ToArray();
             }
@@ -117,9 +155,9 @@ namespace AzureAADSource.Controllers
                 {
                     //Grab Nonce
                     var nonce = cipherReader.ReadBytes(_nonceSize / 8);
- 
+
                     //Grab tag
-                    var tag = cipherReader.ReadBytes(_tagSize / 8);
+                    var tag = encryptedMessage[(encryptedMessage.Length - (_tagSize / 8))..];
 
                     //Decrypt Cipher Text
                     var cipherText = cipherReader.ReadBytes(encryptedMessage.Length - nonce.Length - tag.Length);
@@ -198,6 +236,10 @@ namespace AzureAADSource.Controllers
         /// </summary>
         private byte[] EncryptWithSystemChaCha(byte[] messageToEncrypt, byte[] key)
         {
+            if (!_useSystemChaCha)
+            {
+                return new byte[0];
+            }
             //Using random nonce large enough not to repeat
             var nonce = new byte[_nonceSize / 8];
             _random.NextBytes(nonce, 0, nonce.Length);
@@ -215,10 +257,10 @@ namespace AzureAADSource.Controllers
                 {
                     //Prepend Nonce
                     binaryWriter.Write(nonce);
-                    //Append Tag
-                    binaryWriter.Write(tag);
                     //Write Cipher Text
                     binaryWriter.Write(cipherText);
+                    //Append Tag
+                    binaryWriter.Write(tag);
                 }
                 return combinedStream.ToArray();
             }
@@ -229,6 +271,11 @@ namespace AzureAADSource.Controllers
         /// </summary>
         private byte[] DecryptWithSystemChaCha(byte[] encryptedMessage, byte[] key)
         {
+            if (!_useSystemChaCha)
+            {
+                return new byte[0];
+            }
+
             using (var cipherStream = new MemoryStream(encryptedMessage))
             {
                 using (var cipherReader = new BinaryReader(cipherStream))
@@ -237,7 +284,7 @@ namespace AzureAADSource.Controllers
                     var nonce = cipherReader.ReadBytes(_nonceSize / 8);
 
                     //Grab tag
-                    var tag = cipherReader.ReadBytes(_tagSize / 8);
+                    var tag = encryptedMessage[(encryptedMessage.Length - (_tagSize / 8))..];
 
                     //Decrypt Cipher Text
                     var cipherText = cipherReader.ReadBytes(encryptedMessage.Length - nonce.Length - tag.Length);
@@ -260,7 +307,7 @@ namespace AzureAADSource.Controllers
                 SubTitle = "Secret subtitle",
                 Items = new List<string>(),
             };
-            for (int i = 0; i < 800000; i++)
+            for (int i = 0; i < _messageItems; i++)
             {
                 model.Items.Add($"Item{_random.NextInt64()}");
             }
@@ -268,7 +315,8 @@ namespace AzureAADSource.Controllers
             return jsonString;
         }
 
-        public IActionResult Get()
+        [HttpGet]
+        public ActionResult<string> Get()
         {
             try
             {
@@ -288,11 +336,8 @@ namespace AzureAADSource.Controllers
                 ecKeyPairGen.Init(ecKeyGenParams);
                 AsymmetricCipherKeyPair ecKeyPair = ecKeyPairGen.GenerateKeyPair();
 
-                TextWriter textWriter = new StringWriter();
-                var pemWriter = new PemWriter(textWriter);
-                pemWriter.WriteObject(ecKeyPair.Public);
-                pemWriter.Writer.Flush();
-                string? privateKey = textWriter.ToString();
+                string? publicKey = GetPublicKeyPem(ecKeyPair);
+                string? privateKey = GetPrivateKeyPem(ecKeyPair);
 
                 PemReader pemReaderAlice = new PemReader(new StringReader(privateAlice));
                 AsymmetricCipherKeyPair keyPairAlice = (AsymmetricCipherKeyPair)pemReaderAlice.ReadObject();
@@ -312,6 +357,16 @@ namespace AzureAADSource.Controllers
                 byte[] derivedKey = new byte[32];
                 hkdf.GenerateBytes(derivedKey, 0, 32);
                 var derivedKeyText = Convert.ToBase64String(derivedKey);
+
+                //TAG test
+                var nonce = new byte[_nonceSize / 8];
+                _random.NextBytes(nonce, 0, nonce.Length);
+                var testMessage = Encoding.UTF8.GetBytes("Zkouska");
+                var encryptedBC = EncryptWithAes(testMessage, derivedKey, nonce);
+                var encryptedSys = EncryptWithSystemAes(testMessage, derivedKey, nonce);
+
+                var decryptedBC = DecryptWithAes(encryptedSys, derivedKey);
+                var decryptedSys = DecryptWithSystemAes(encryptedBC, derivedKey);
 
                 message = GenerateLargeMessage();
                 //derivedKey = Convert.FromBase64String("15zJkw8Dyr1w4iQZw92miip3CQBWlVkpiJUsZacdexs=");
@@ -370,6 +425,83 @@ namespace AzureAADSource.Controllers
             catch (Exception ex)
             {
                 var errorText = $"The encryption failed. {ex}";
+                Console.WriteLine(errorText);
+                return Ok(errorText);
+            }
+        }
+
+        [HttpPost]
+        [Consumes("application/json+encrypted")]
+        public async Task<IActionResult> Message()
+        {
+            try
+            {
+                byte[]? inMessage = null;
+                if (Request.ContentLength > 0)
+                {
+                    var memoryStream = new MemoryStream();
+                    while (true)
+                    {
+                        var readResult = await Request.BodyReader.ReadAsync();
+                        memoryStream.Write(readResult.Buffer.ToArray());
+                        if (readResult.IsCompleted)
+                        {
+                            break;
+                        }
+                    }
+                    inMessage = memoryStream.ToArray();
+                }
+
+                string serverPrivateKeyPem = "-----BEGIN EC PRIVATE KEY-----\r\nMIIBaAIBAQQgFJU4mP0PhwKmWlMuBOlqn1tYaCFPuotpBMC6defPpa2ggfowgfcC\r\nAQEwLAYHKoZIzj0BAQIhAP////8AAAABAAAAAAAAAAAAAAAA////////////////\r\nMFsEIP////8AAAABAAAAAAAAAAAAAAAA///////////////8BCBaxjXYqjqT57Pr\r\nvVV2mIa8ZR0GsMxTsPY7zjw+J9JgSwMVAMSdNgiG5wSTamZ44ROdJreBn36QBEEE\r\naxfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpZP40Li/hp/m47n60p8D54W\r\nK84zV2sxXs7LtkBoN79R9QIhAP////8AAAAA//////////+85vqtpxeehPO5ysL8\r\nYyVRAgEBoUQDQgAEnf0O6t2D1/UOj1EUGFsMaQLqXXMWxbwYWmc7kGQlOLGL3Qcj\r\nVms5ws/Te6KklMXPYXO7A+NVeRqarjGohM0GLA==\r\n-----END EC PRIVATE KEY-----";
+                string mobilePublicKeyPem = "-----BEGIN PUBLIC KEY-----\r\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEbMECUW9nmiTCqouARPQGXr8Auy9R\r\n1JDIKyrLItxIsUYny8MVpvjLV1ASoyLHfRPGEmTIbg0Tq9r+Oj9XT5Oq1w==\r\n-----END PUBLIC KEY-----";
+
+                //Načíst private key
+                PemReader pemReaderServer = new PemReader(new StringReader(serverPrivateKeyPem));
+                AsymmetricCipherKeyPair keyPairServer = (AsymmetricCipherKeyPair)pemReaderServer.ReadObject();
+                ECPrivateKeyParameters privateKeyParamsServer = (ECPrivateKeyParameters)keyPairServer.Private;
+
+                //Načíst public key mobilního zařízení
+                PemReader pemReaderMobile = new PemReader(new StringReader(mobilePublicKeyPem));
+                ECPublicKeyParameters publicKeyParamsMobile = (ECPublicKeyParameters)pemReaderMobile.ReadObject();
+
+                //Vytvořit key agreement z private a public klíče
+                ECDHCBasicAgreement keyAgreement = new ECDHCBasicAgreement();
+                keyAgreement.Init(privateKeyParamsServer);
+                BigInteger secret = keyAgreement.CalculateAgreement(publicKeyParamsMobile);
+                var inKey = secret.ToByteArrayUnsigned();
+
+                //Derivovat klíč
+                HkdfParameters parameters = new HkdfParameters(inKey, null, null);
+                HkdfBytesGenerator hkdf = new HkdfBytesGenerator(new Sha256Digest());
+                hkdf.Init(parameters);
+                byte[] derivedKey = new byte[32];
+                hkdf.GenerateBytes(derivedKey, 0, 32);
+                var derivedKeyText = Convert.ToBase64String(derivedKey);
+
+                //var testString = "Zkouška šifrování";
+                //var testMessage = EncryptWithChaChaPoly(Encoding.UTF8.GetBytes(testString), derivedKey);
+                //System.IO.File.WriteAllBytes("e:\\Projects\\AzureADWebApp\\AzureAADSource\\Resources\\data.dat", testMessage);
+
+                if (inMessage != null)
+                {
+                    //Rozšifrovat zprávu
+                    var decryptedMessage = _useSystemChaCha ? DecryptWithSystemChaCha(inMessage, derivedKey) : DecryptWithChaChaPoly(inMessage, derivedKey);
+                    var message = Encoding.UTF8.GetString(decryptedMessage);
+
+                    //Zašifrovat odpověď
+                    var outMessage = _useSystemChaCha ? EncryptWithSystemChaCha(decryptedMessage, derivedKey) : EncryptWithChaChaPoly(decryptedMessage, derivedKey);
+                    //var result = await Response.BodyWriter.WriteAsync(outMessage);
+                    //await Response.BodyWriter.FlushAsync();
+                    return Content(Convert.ToBase64String(outMessage), "application/json+encrypted");
+                }
+                else
+                {
+                    return Ok("Nebyl načten žádný požadavek");
+                }
+            }
+            catch (Exception exception)
+            {
+                var errorText = $"The encryption failed. {exception}";
                 Console.WriteLine(errorText);
                 return Ok(errorText);
             }
