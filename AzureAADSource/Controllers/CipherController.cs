@@ -21,6 +21,7 @@ using System.Buffers;
 using Microsoft.Extensions.Logging.Abstractions;
 using Org.BouncyCastle.Utilities;
 using System.IO;
+using AzureAADSource.Infrastructure;
 
 namespace AzureAADSource.Controllers
 {
@@ -232,7 +233,7 @@ namespace AzureAADSource.Controllers
         }
 
         /// <summary>
-        /// Nepoužívat, ChaCha20Poly1305 hlásí, že je algorytmus nedostupný na platformě
+        /// Nepoužívat na Windows, ChaCha20Poly1305 hlásí, že je algorytmus nedostupný na platformě
         /// </summary>
         private byte[] EncryptWithSystemChaCha(byte[] messageToEncrypt, byte[] key)
         {
@@ -267,7 +268,7 @@ namespace AzureAADSource.Controllers
         }
 
         /// <summary>
-        /// Nepoužívat, ChaCha20Poly1305 hlásí, že je algorytmus nedostupný na platformě
+        /// Nepoužívat na Windows, ChaCha20Poly1305 hlásí, že je algorytmus nedostupný na platformě
         /// </summary>
         private byte[] DecryptWithSystemChaCha(byte[] encryptedMessage, byte[] key)
         {
@@ -297,22 +298,6 @@ namespace AzureAADSource.Controllers
                     return plainText;
                 }
             }
-        }
-
-        private string GenerateLargeMessage()
-        {
-            var model = new JsonModel()
-            {
-                Title = "Secret message",
-                SubTitle = "Secret subtitle",
-                Items = new List<string>(),
-            };
-            for (int i = 0; i < _messageItems; i++)
-            {
-                model.Items.Add($"Item{_random.NextInt64()}");
-            }
-            string jsonString = JsonSerializer.Serialize(model);
-            return jsonString;
         }
 
         [HttpGet]
@@ -368,7 +353,7 @@ namespace AzureAADSource.Controllers
                 var decryptedBC = DecryptWithAes(encryptedSys, derivedKey);
                 var decryptedSys = DecryptWithSystemAes(encryptedBC, derivedKey);
 
-                message = GenerateLargeMessage();
+                message = Utils.GenerateLargeMessage(_messageItems);
                 //derivedKey = Convert.FromBase64String("15zJkw8Dyr1w4iQZw92miip3CQBWlVkpiJUsZacdexs=");
 
                 //var encryptedData = Convert.FromBase64String(cipheredText);
