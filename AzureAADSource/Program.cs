@@ -1,3 +1,4 @@
+using AzureAADSource.Infrastructure;
 using Microsoft.OpenApi.Models;
 using System.Reflection;
 
@@ -34,7 +35,7 @@ namespace AzureAADSource
                 // Set the comments path for the Swagger JSON and UI.
                 options.EnableAnnotations();
             });
-
+            builder.Services.AddSingleton<CipherTools>();
             builder.Services.AddControllers();
 
             var app = builder.Build();
@@ -54,6 +55,7 @@ namespace AzureAADSource
 
             app.UseAuthorization();
 
+            app.UseCipher();
 
             app.MapControllers();
 
