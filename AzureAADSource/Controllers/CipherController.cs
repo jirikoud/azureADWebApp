@@ -2,7 +2,6 @@
 using AzureAADSource.Models;
 using Microsoft.AspNetCore.Mvc;
 using Org.BouncyCastle.Crypto.Parameters;
-using System.Buffers;
 using System.Diagnostics;
 using System.Text;
 
@@ -82,9 +81,9 @@ namespace AzureAADSource.Controllers
                 string publicBob = "-----BEGIN PUBLIC KEY-----\r\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEbMECUW9nmiTCqouARPQGXr8Auy9R\r\n1JDIKyrLItxIsUYny8MVpvjLV1ASoyLHfRPGEmTIbg0Tq9r+Oj9XT5Oq1w==\r\n-----END PUBLIC KEY-----";
                 string message = "Zkouška sirén";
 
-                var ecKeyPair = _cipherTools.GenerateKeyPair();
-                string? publicKey = _cipherTools.GetPublicKeyPem(ecKeyPair);
-                string? privateKey = _cipherTools.GetPrivateKeyPem(ecKeyPair);
+                //var ecKeyPair = _cipherTools.GenerateKeyPair();
+                //string? publicKey = _cipherTools.GetPublicKeyPem(ecKeyPair);
+                //string? privateKey = _cipherTools.GetPrivateKeyPem(ecKeyPair);
 
                 ECPrivateKeyParameters privateKeyAlice = _cipherTools.ReadPrivateKey(privateAlice);
                 ECPublicKeyParameters publicKeyBob = _cipherTools.ReadPublicKey(publicBob);

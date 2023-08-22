@@ -1,37 +1,17 @@
-﻿using Org.BouncyCastle.Asn1.X9;
-using Org.BouncyCastle.Crypto.Generators;
-using Org.BouncyCastle.Crypto;
-using Org.BouncyCastle.Crypto.Parameters;
-using Org.BouncyCastle.Security;
-using Org.BouncyCastle.OpenSsl;
-using Org.BouncyCastle.Crypto.Agreement;
-using Org.BouncyCastle.Math;
-using Org.BouncyCastle.Crypto.Engines;
-using Org.BouncyCastle.Crypto.Modes;
-using System.Globalization;
-using System.Text;
-using System.Buffers;
-using Microsoft.Extensions.Configuration;
-using Org.BouncyCastle.Crypto.Digests;
-using System.IO;
-using AzureAADSource.Models;
-using System.Text.Json;
-using Microsoft.AspNetCore.SignalR.Protocol;
+﻿using System.Text;
 
 namespace AzureAADSource.Infrastructure
 {
     public class CipherMiddleware
     {
-        private bool _useSystemChaCha;
         private readonly RequestDelegate _next;
         private CipherTools _cipherTools;
         private const string serverPrivateKeyPem = "-----BEGIN EC PRIVATE KEY-----\r\nMIIBaAIBAQQgFJU4mP0PhwKmWlMuBOlqn1tYaCFPuotpBMC6defPpa2ggfowgfcC\r\nAQEwLAYHKoZIzj0BAQIhAP////8AAAABAAAAAAAAAAAAAAAA////////////////\r\nMFsEIP////8AAAABAAAAAAAAAAAAAAAA///////////////8BCBaxjXYqjqT57Pr\r\nvVV2mIa8ZR0GsMxTsPY7zjw+J9JgSwMVAMSdNgiG5wSTamZ44ROdJreBn36QBEEE\r\naxfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpZP40Li/hp/m47n60p8D54W\r\nK84zV2sxXs7LtkBoN79R9QIhAP////8AAAAA//////////+85vqtpxeehPO5ysL8\r\nYyVRAgEBoUQDQgAEnf0O6t2D1/UOj1EUGFsMaQLqXXMWxbwYWmc7kGQlOLGL3Qcj\r\nVms5ws/Te6KklMXPYXO7A+NVeRqarjGohM0GLA==\r\n-----END EC PRIVATE KEY-----";
         private const string mobilePublicKeyPem = "-----BEGIN PUBLIC KEY-----\r\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEbMECUW9nmiTCqouARPQGXr8Auy9R\r\n1JDIKyrLItxIsUYny8MVpvjLV1ASoyLHfRPGEmTIbg0Tq9r+Oj9XT5Oq1w==\r\n-----END PUBLIC KEY-----";
 
-        public CipherMiddleware(RequestDelegate next, IConfiguration configuration, CipherTools cipherTools)
+        public CipherMiddleware(RequestDelegate next, CipherTools cipherTools)
         {
             _cipherTools = cipherTools;
-            _useSystemChaCha = configuration.GetValue<bool>("UseSystemChaChaPoly");
             _next = next;
         }
 

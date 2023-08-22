@@ -9,7 +9,6 @@ using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Math;
 using Org.BouncyCastle.OpenSsl;
 using Org.BouncyCastle.Security;
-using System;
 
 namespace AzureAADSource.Infrastructure
 {
@@ -285,6 +284,14 @@ namespace AzureAADSource.Infrastructure
             return ecKeyPair;
         }
 
+        public AsymmetricCipherKeyPair GenerateRSAKeyPair()
+        {
+            RsaKeyPairGenerator rsaKeyPairGen = new RsaKeyPairGenerator();
+            rsaKeyPairGen.Init(new KeyGenerationParameters(_random, 4096));
+            AsymmetricCipherKeyPair rsaKeyPair = rsaKeyPairGen.GenerateKeyPair();
+            return rsaKeyPair;
+        }
+
         public string? GetPublicKeyPem(AsymmetricCipherKeyPair keyPair)
         {
             TextWriter textWriter = new StringWriter();
@@ -358,6 +365,25 @@ namespace AzureAADSource.Infrastructure
         public byte[] DecryptWithChaChaPoly(byte[] encryptedMessage, byte[] key, bool? forceSystem = null)
         {
             return (forceSystem ?? _useSystemCipher) ? DecryptWithSystemChaChaPoly(encryptedMessage, key) : DecryptWithBCChaChaPoly(encryptedMessage, key);
+        }
+
+        public byte[] EncryptWithRsa(byte[] messageToEncrypt, System.Security.Cryptography.RSA rsa)
+        {
+            byte[] cipherText = rsa.Encrypt(messageToEncrypt, System.Security.Cryptography.RSAEncryptionPadding.Pkcs1);
+            return cipherText;
+        }
+
+        public byte[] DecryptWithRsa(byte[] encryptedMessage, System.Security.Cryptography.RSA rsa)
+        {
+            byte[] cipherText = rsa.Decrypt(encryptedMessage, System.Security.Cryptography.RSAEncryptionPadding.Pkcs1);
+            return cipherText;
+        }
+
+        public System.Security.Cryptography.RSA CreateRsaKey(string pem)
+        {
+            var rsa = System.Security.Cryptography.RSA.Create();
+            rsa.ImportFromPem(pem.ToCharArray());
+            return rsa;
         }
 
         #endregion
