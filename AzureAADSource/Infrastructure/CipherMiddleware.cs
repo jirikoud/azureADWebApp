@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using Microsoft.AspNetCore.Http.Features;
+using System.Text;
 
 namespace AzureAADSource.Infrastructure
 {
@@ -20,13 +21,14 @@ namespace AzureAADSource.Infrastructure
             try
             {
                 var blockResponseCipher = context.Request.Headers["no-cipher"] == "1";
-                var useResponseCipher = context.Request.Path.StartsWithSegments(PathString.FromUriComponent("/api/cipher")) && !blockResponseCipher;
+                var hasAttribute = context.GetEndpoint()?.Metadata.GetMetadata<SupportsCipherAttribute>() != null;
+                var useResponseCipher = hasAttribute && !blockResponseCipher;
 
                 var privateKey = _cipherTools.ReadPrivateKey(serverPrivateKeyPem);
                 var publicKey = _cipherTools.ReadPublicKey(mobilePublicKeyPem);
                 byte[] derivedKey = _cipherTools.DeriveKey(privateKey, publicKey);
 
-                if (context.Request.ContentType == "application/json+encrypted")
+                if (context.Request.ContentType == "application/octet-stream")
                 {
                     byte[]? inMessage = null;
                     if (context.Request.ContentLength > 0)
@@ -44,6 +46,8 @@ namespace AzureAADSource.Infrastructure
                         }
                         inMessage = memoryStream.ToArray();
                     }
+
+                    var derKey = Convert.ToBase64String(derivedKey);
 
                     //var testModel = new CipherMessageRequest() { Message = "Zkouska zpravy" };
                     //var testText = JsonSerializer.Serialize(testModel);

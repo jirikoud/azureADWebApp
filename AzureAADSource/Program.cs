@@ -1,4 +1,5 @@
 using AzureAADSource.Infrastructure;
+using Microsoft.Identity.Web;
 using Microsoft.OpenApi.Models;
 using System.Reflection;
 
@@ -37,6 +38,7 @@ namespace AzureAADSource
             });
             builder.Services.AddSingleton<CipherTools>();
             builder.Services.AddControllers();
+            builder.Services.AddMicrosoftIdentityWebApiAuthentication(builder.Configuration);
 
             var app = builder.Build();
 

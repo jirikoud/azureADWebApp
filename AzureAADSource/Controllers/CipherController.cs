@@ -9,6 +9,9 @@ namespace AzureAADSource.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Consumes("application/json", "application/octet-stream")]
+    [Produces("application/json", "application/octet-stream")]
+    [SupportsCipher]
     public class CipherController : ControllerBase
     {
         private CipherTools _cipherTools;
@@ -123,7 +126,6 @@ namespace AzureAADSource.Controllers
         }
 
         [HttpPost]
-        [Consumes("application/json+encrypted", "application/json")]
         public ActionResult<CipherMessageRequest> Message(CipherMessageRequest? model)
         {
             try
