@@ -1,8 +1,10 @@
-﻿using AzureAADSource.Infrastructure;
+﻿using Azure.Identity;
+using AzureAADSource.Infrastructure;
 using AzureAADSource.Models.Appointments;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Azure.Cosmos;
 using Microsoft.Identity.Web.Resource;
 
 namespace AzureAADSource.Controllers
@@ -12,7 +14,7 @@ namespace AzureAADSource.Controllers
     [Consumes("application/json", "application/octet-stream")]
     [Produces("application/json", "application/octet-stream")]
     [SupportsCipher]
-    [Authorize]
+    //[Authorize]
     public class AppointmentController : ControllerBase
     {
         private readonly ILogger _logger;
@@ -29,6 +31,14 @@ namespace AzureAADSource.Controllers
         {
             try
             {
+                var endpoint = Environment.GetEnvironmentVariable("COSMOS_ENDPOINT");
+                var primaryKey = Environment.GetEnvironmentVariable("COSMOS_KEY");
+
+                using CosmosClient client = new(
+                    accountEndpoint: endpoint!,
+                    authKeyOrResourceToken: primaryKey!
+                    );
+
                 var list = ListResponseModel.CreateMock();
                 return Ok(list);
             }
