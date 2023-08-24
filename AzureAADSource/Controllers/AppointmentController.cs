@@ -1,6 +1,7 @@
 ﻿using Azure.Identity;
 using AzureAADSource.Infrastructure;
 using AzureAADSource.Models.Appointments;
+using AzureAADSource.Models.DatabaseModels;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -38,6 +39,27 @@ namespace AzureAADSource.Controllers
                     accountEndpoint: endpoint!,
                     authKeyOrResourceToken: primaryKey!
                     );
+                Database database = await client.CreateDatabaseIfNotExistsAsync("mPAtient");
+                Container container = await database.CreateContainerIfNotExistsAsync(
+                    id: "devices",
+                    partitionKeyPath: "/categoryId",
+                    throughput: 400
+                );
+
+                Device newItem = new Device()
+                {
+                    Id = "70b63682-b93a-4c77-aad2-65501347265f",
+                    CategoryId = "61dba35b-4f02-45c5-b648-c6badc0cbd79",
+                    CategoryName = "gear-surf-surfboards",
+                    Name = "Yamba Surfboard",
+                    Quantity = 12,
+                    Sale = false
+                };
+
+                Device createdItem = await container.CreateItemAsync<Device>(
+                    item: newItem,
+                    partitionKey: new PartitionKey("61dba35b-4f02-45c5-b648-c6badc0cbd79")
+                );
 
                 var list = ListResponseModel.CreateMock();
                 return Ok(list);
