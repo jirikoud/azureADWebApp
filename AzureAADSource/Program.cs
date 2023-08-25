@@ -39,8 +39,12 @@ namespace AzureAADSource
             builder.Services.AddSingleton<CipherTools>();
             builder.Services.AddControllers();
             builder.Services.AddMicrosoftIdentityWebApiAuthentication(builder.Configuration);
+            builder.Services.AddSingleton<DbContext>();
 
             var app = builder.Build();
+
+            var dbContext = app.Services.GetRequiredService<DbContext>();
+            dbContext.InitializeAsync().Wait();
 
             // Configure the HTTP request pipeline.
 
