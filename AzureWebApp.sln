@@ -5,7 +5,9 @@ VisualStudioVersion = 17.6.33815.320
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AzureWebApp", "AzureWebApp\AzureWebApp.csproj", "{16132E05-C6FC-4289-8603-08332023C982}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AzureAADSource", "AzureAADSource\AzureAADSource.csproj", "{82AEDDEB-51BA-40C7-B601-984FBA184338}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AzureAADSource", "AzureAADSource\AzureAADSource.csproj", "{82AEDDEB-51BA-40C7-B601-984FBA184338}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TimerFunctionNIS", "TimerFunctionNIS\TimerFunctionNIS.csproj", "{1D632A49-7348-49E0-93BA-12E3E4F2C7CF}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +23,10 @@ Global
 		{82AEDDEB-51BA-40C7-B601-984FBA184338}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{82AEDDEB-51BA-40C7-B601-984FBA184338}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{82AEDDEB-51BA-40C7-B601-984FBA184338}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1D632A49-7348-49E0-93BA-12E3E4F2C7CF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1D632A49-7348-49E0-93BA-12E3E4F2C7CF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1D632A49-7348-49E0-93BA-12E3E4F2C7CF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1D632A49-7348-49E0-93BA-12E3E4F2C7CF}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

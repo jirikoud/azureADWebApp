@@ -7,6 +7,9 @@ using System.Text;
 
 namespace AzureAADSource.Controllers
 {
+    /// <summary>
+    /// Testy šifrování s použitím systémové knihovny a BouncyCastle
+    /// </summary>
     [Route("api/[controller]")]
     [ApiController]
     [Consumes("application/json", "application/octet-stream")]
@@ -75,6 +78,10 @@ namespace AzureAADSource.Controllers
             return stopwatch.ElapsedMilliseconds;
         }
 
+        /// <summary>
+        /// Testovací metoda na porovnání rychlosti šifrování
+        /// </summary>
+        /// <returns></returns>
         [HttpGet]
         public ActionResult<string> Get()
         {
@@ -125,6 +132,11 @@ namespace AzureAADSource.Controllers
             }
         }
 
+        /// <summary>
+        /// Test příjmu a odeslání zašifrované zprávy (skrze middleware)
+        /// </summary>
+        /// <param name="model"></param>
+        /// <returns></returns>
         [HttpPost]
         public ActionResult<CipherMessageRequest> Message(CipherMessageRequest? model)
         {

@@ -1,4 +1,7 @@
-﻿using Azure.Storage.Blobs;
+﻿using Azure.Core;
+using Azure.Identity;
+using Azure.Security.KeyVault.Secrets;
+using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using AzureAADSource.Infrastructure;
 using AzureAADSource.Models;
@@ -132,6 +135,30 @@ namespace AzureAADSource.Controllers
             return stopwatch.ElapsedMilliseconds;
         }
 
+        private byte[]? GetSecretKey(int nisId, int patientId)
+        {
+            SecretClientOptions options = new SecretClientOptions()
+            {
+                Retry =
+                {
+                    Delay= TimeSpan.FromSeconds(2),
+                    MaxDelay = TimeSpan.FromSeconds(16),
+                    MaxRetries = 5,
+                    Mode = RetryMode.Exponential
+                }
+            };
+            var client = new SecretClient(new Uri("https://azure-keyvault-jk.vault.azure.net/"), new DefaultAzureCredential(), options);
+            var keyName = $"NIS-{nisId}-PATIENT-{patientId}-BLOB";
+            var azureResponse = client.GetSecret(keyName);
+            if (azureResponse.Value != null)
+            {
+                var secretValue = azureResponse.Value.Value;
+                var secretData = Convert.FromBase64String(secretValue);
+                return secretData;
+            }
+            return null;
+        }
+
         [HttpGet]
         public async Task<ActionResult> Get()
         {
@@ -142,9 +169,9 @@ namespace AzureAADSource.Controllers
                 //string? privateKeyRsa = _cipherTools.GetPrivateKeyPem(rsaKeyPair);
 
                 // Create derived key for ChaChaPoly cipher
-                var privateKey = _cipherTools.ReadPrivateKey(serverPrivateKeyPem);
-                var publicKey = _cipherTools.ReadPublicKey(mobilePublicKeyPem);
-                byte[] derivedKey = _cipherTools.DeriveKey(privateKey, publicKey);
+                //var privateKey = _cipherTools.ReadPrivateKey(serverPrivateKeyPem);
+                //var publicKey = _cipherTools.ReadPublicKey(mobilePublicKeyPem);
+                //byte[] derivedKey = _cipherTools.DeriveKey(privateKey, publicKey);
 
                 //var rsaPublicKey = _cipherTools.CreateRsaKey(publicKeyPemRsa);
                 //var rsaPrivateKey = _cipherTools.CreateRsaKey(privateKeyPemRsa);
@@ -170,6 +197,8 @@ namespace AzureAADSource.Controllers
                 BlobClient blobClientPlain = containerClient.GetBlobClient("patient_data.json");
                 BlobClient blobClientChaCha = containerClient.GetBlobClient("patient_data.cjson");
                 BlobClient blobClientRsa = containerClient.GetBlobClient("patient_data.ajson");
+
+                var derivedKey = GetSecretKey(1, 12345);
 
                 var downloadPlain = await EstimateDownload(blobClientPlain, CipherType.Plain);
                 var downloadChaCha = await EstimateDownload(blobClientChaCha, CipherType.ChaChaPoly, derivedKey);
