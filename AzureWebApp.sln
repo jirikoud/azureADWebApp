@@ -7,7 +7,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AzureWebApp", "AzureWebApp\
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AzureAADSource", "AzureAADSource\AzureAADSource.csproj", "{82AEDDEB-51BA-40C7-B601-984FBA184338}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TimerFunctionNIS", "TimerFunctionNIS\TimerFunctionNIS.csproj", "{1D632A49-7348-49E0-93BA-12E3E4F2C7CF}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TimerFunctionNIS", "TimerFunctionNIS\TimerFunctionNIS.csproj", "{1D632A49-7348-49E0-93BA-12E3E4F2C7CF}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

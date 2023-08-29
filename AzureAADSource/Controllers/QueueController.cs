@@ -20,7 +20,7 @@ namespace AzureAADSource.Controllers
             string? connectionString = Environment.GetEnvironmentVariable("AZURE_STORAGE_CONNECTION_STRING");
 
             // Create a BlobServiceClient object 
-            this.queueClient = new QueueClient(connectionString, QUEUE_NAME, new QueueClientOptions();
+            this.queueClient = new QueueClient(connectionString, QUEUE_NAME);
         }
 
         [HttpGet]
