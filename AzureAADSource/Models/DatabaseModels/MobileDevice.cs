@@ -22,7 +22,7 @@ namespace AzureAADSource.Models.DatabaseModels
 
         public string Language { get; set; }
 
-        public DateTime? Created { get; set; }
+        public DateTime Created { get; set; }
         public string DebugUsername { get; set; }
     }
 }

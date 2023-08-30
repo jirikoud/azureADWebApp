@@ -18,6 +18,7 @@ namespace AzureWebApp.Pages
         public string? Pets { get; set; }
         public string? Season { get; set; }
         public string? Flow { get; set; }
+        public string? Clinics { get; set; }
 
         public PrivacyModel(ILogger<PrivacyModel> logger)
         {
@@ -36,6 +37,7 @@ namespace AzureWebApp.Pages
                 this.Flow = identity.Claims.FirstOrDefault(item => item.Type == "tfp")?.Value;
                 this.Pets = identity.Claims.FirstOrDefault(item => item.Type == "extension_LovesPets")?.Value;
                 this.Season = identity.Claims.FirstOrDefault(item => item.Type == "extension_FavouriteSeason")?.Value;
+                this.Clinics = identity.Claims.FirstOrDefault(item => item.Type == "extension_Clinics")?.Value;
             }
         }
     }

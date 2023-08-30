@@ -1,8 +1,7 @@
-﻿using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
-using System;
 using AzureAADSource.Models;
+using AzureAADSource.Infrastructure;
 
 namespace AzureAADSource.Controllers
 {
@@ -11,9 +10,12 @@ namespace AzureAADSource.Controllers
     public class ClaimsController : ControllerBase
     {
         private string _version;
+        private readonly DbContext _dbContext;
 
-        public ClaimsController() {
+        public ClaimsController(DbContext dbContext) 
+        {
             _version = "1.0";
+            _dbContext = dbContext;
         }
 
         /// <summary>
@@ -28,14 +30,13 @@ namespace AzureAADSource.Controllers
         [HttpPost]
         public async Task<FlowTokenEnrichmentLicenseResponse> Get(FlowTokenEnrichmentRequest request)
         {
-            var mappings = new List<ClinicMapping>()
-            {
-                new ClinicMapping(){ FacilityId = 1, PatientId = 123456 },
-                new ClinicMapping(){ FacilityId = 11, PatientId = 23456 },
-                new ClinicMapping(){ FacilityId = 21, PatientId = 3456 },
-            };
+            var patientPairings = await _dbContext.GetPatientPairingsByUsernameAsync(request.ObjectId);
+
+            var mappings = patientPairings.ConvertAll(item => new ClinicMapping() { FacilityId = item.NISId, PatientId = item.PatientId });
 
             var serialized = JsonSerializer.Serialize(mappings);
+
+            //var serialized = JsonSerializer.Serialize(request);
 
             return new FlowTokenEnrichmentLicenseResponse { Clinics = serialized, Version = _version };
         }
