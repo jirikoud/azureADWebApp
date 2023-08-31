@@ -126,5 +126,15 @@ namespace AzureAADSource.Infrastructure
             return (count > 0);
         }
 
+        public async Task<List<PatientPairing>> GetPatientCurrentAsync(DateTime limit)
+        {
+            var container = _cosmosClient!.GetContainer(DATABASE_NAME, CONTAINER_PATIENT_PAIRING);
+            var query = container.GetItemLinqQueryable<PatientPairing>().Where(item => item.Created > limit);
+            var iterator = query.ToFeedIterator();
+            var results = await iterator.ReadNextAsync();
+            return results.ToList();
+        }
+
+
     }
 }

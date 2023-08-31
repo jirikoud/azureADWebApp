@@ -40,6 +40,9 @@ namespace AzureAADSource
             builder.Services.AddControllers();
             builder.Services.AddMicrosoftIdentityWebApiAuthentication(builder.Configuration);
             builder.Services.AddSingleton<DbContext>();
+            builder.Services.AddStackExchangeRedisCache(options => {
+                options.Configuration = Environment.GetEnvironmentVariable("AZURE_CACHE_FOR_REDIS_CONNECTION");
+            });
 
             var app = builder.Build();
 
