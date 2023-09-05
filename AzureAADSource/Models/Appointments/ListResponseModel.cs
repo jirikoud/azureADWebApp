@@ -4,14 +4,13 @@
     {
         public List<ListItemModel> List { get; set; }
 
-        public static ListResponseModel CreateMock()
+        public static ListResponseModel CreateMock(int itemCount)
         {
-            var random = new Random();
             var model = new ListResponseModel
             {
                 List = new List<ListItemModel>(),
             };
-            for (int i = 0; i < random.Next(1, 10); i++)
+            for (int i = 0; i < itemCount; i++)
             {
                 model.List.Add(ListItemModel.CreateMock());
             }

@@ -5,6 +5,7 @@ using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using AzureAADSource.Infrastructure;
 using AzureAADSource.Models;
+using AzureAADSource.Models.Appointments;
 using Microsoft.AspNetCore.Mvc;
 using System.Diagnostics;
 using System.Security.Cryptography;
@@ -57,8 +58,9 @@ namespace AzureAADSource.Controllers
                                 break;
                             }
                         }
+                        memoryStream.Position = 0;
                         JsonDocument jsonDocument = JsonDocument.Parse(memoryStream);
-                        var jsonModel = JsonSerializer.Deserialize<JsonModel>(jsonDocument);
+                        var jsonModel = JsonSerializer.Deserialize<ListResponseModel>(jsonDocument);
                     }
                     if (cipherType == CipherType.ChaChaPoly)
                     {
@@ -76,7 +78,7 @@ namespace AzureAADSource.Controllers
                         var decryptedData = _cipherTools.DecryptWithChaChaPoly(memoryStream.ToArray(), derivedKey!);
                         var json = Encoding.UTF8.GetString(decryptedData);
                         JsonDocument jsonDocument = JsonDocument.Parse(json);
-                        var jsonModel = JsonSerializer.Deserialize<JsonModel>(jsonDocument);
+                        var jsonModel = JsonSerializer.Deserialize<ListResponseModel>(jsonDocument);
                     }
                     if (cipherType == CipherType.Aes)
                     {
@@ -94,7 +96,7 @@ namespace AzureAADSource.Controllers
                         var decryptedData = _cipherTools.DecryptWithAes(memoryStream.ToArray(), derivedKey!);
                         var json = Encoding.UTF8.GetString(decryptedData);
                         JsonDocument jsonDocument = JsonDocument.Parse(json);
-                        var jsonModel = JsonSerializer.Deserialize<JsonModel>(jsonDocument);
+                        var jsonModel = JsonSerializer.Deserialize<ListResponseModel>(jsonDocument);
                     }
                 }
             }
@@ -125,38 +127,18 @@ namespace AzureAADSource.Controllers
             }
             var stream = new MemoryStream(encryptedContent);
 
-            var content = await blobClient.UploadAsync(stream, true);
-            var tags = new Dictionary<string, string>()
+            var responseContent = await blobClient.UploadAsync(stream, true);
+            if (responseContent.Value != null)
+            {
+                var tags = new Dictionary<string, string>()
                 {
-                    { "patient_id", "12345" }
+                    { "patient_id", "12345" },
+                    { "timestamp", DateTime.Now.Ticks.ToString() }
                 };
-            blobClient.SetTags(tags);
+                blobClient.SetTags(tags);
+            }
             stopwatch.Stop();
             return stopwatch.ElapsedMilliseconds;
-        }
-
-        private byte[]? GetSecretKey(int nisId, int patientId)
-        {
-            SecretClientOptions options = new SecretClientOptions()
-            {
-                Retry =
-                {
-                    Delay= TimeSpan.FromSeconds(2),
-                    MaxDelay = TimeSpan.FromSeconds(16),
-                    MaxRetries = 5,
-                    Mode = RetryMode.Exponential
-                }
-            };
-            var client = new SecretClient(new Uri("https://azure-keyvault-jk.vault.azure.net/"), new DefaultAzureCredential(), options);
-            var keyName = $"NIS-{nisId}-PATIENT-{patientId}-BLOB";
-            var azureResponse = client.GetSecret(keyName);
-            if (azureResponse.Value != null)
-            {
-                var secretValue = azureResponse.Value.Value;
-                var secretData = Convert.FromBase64String(secretValue);
-                return secretData;
-            }
-            return null;
         }
 
         [HttpGet]
@@ -198,13 +180,16 @@ namespace AzureAADSource.Controllers
                 BlobClient blobClientChaCha = containerClient.GetBlobClient("patient_data.cjson");
                 BlobClient blobClientRsa = containerClient.GetBlobClient("patient_data.ajson");
 
-                var derivedKey = GetSecretKey(1, 12345);
+                var derivedKey = SecretUtils.GetSecretKey(1, 12345);
 
                 var downloadPlain = await EstimateDownload(blobClientPlain, CipherType.Plain);
                 var downloadChaCha = await EstimateDownload(blobClientChaCha, CipherType.ChaChaPoly, derivedKey);
                 var downloadAes = await EstimateDownload(blobClientRsa, CipherType.Aes, derivedKey);
 
-                var message = Utils.GenerateLargeMessage(20000);
+                //var message = Utils.GenerateLargeMessage(20000);
+
+                var list = ListResponseModel.CreateMock(20000);
+                string message = JsonSerializer.Serialize(list);
 
                 var uploadPlain = await EstimateUpload(blobClientPlain, message, CipherType.Plain);
                 var uploadChaCha = await EstimateUpload(blobClientChaCha, message, CipherType.ChaChaPoly, derivedKey);
